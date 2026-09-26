@@ -1,21 +1,33 @@
 [Unit]
 Description=Unlock KWallet automatically using TPM credentials
+Documentation=https://github.com/Himalian/autokdewallet
+# The user bus is enough; the graphical environment is delivered later,
+# over the socket, the same way pam_kwallet_init does it.
 After=dbus.socket
-# Before=graphical-session.target
+# Start before Plasma so this unit is the one that launches ksecretd.
+# SDDM autologin never gives pam_kwallet a password, so nothing else will.
 Before=graphical-session-pre.target
 Before=plasma-workspace.target
 
 [Service]
-Type=oneshot
-# %h means home directory
-WorkingDirectory=%h/autokdewallet
-# LoadCredentialEncrypted=password:%h/autokdewallet/password.cred
-# make sure dbus is already running
-ExecStartPre=/usr/bin/sleep 0.15
-ExecStart=/usr/bin/python %h/autokdewallet/unlock.py
+# Type=simple, not oneshot: the script stays alive as the parent of ksecretd
+# so that this unit represents the daemon's lifetime. Type=simple is also
+# what lets Plasma publish WAYLAND_DISPLAY while the handshake is still waiting.
+Type=simple
+# This checkout lives here. The previous unit pointed at vg101/tools, which is gone.
+WorkingDirectory=%h/vg101/dev/autokdewallet
+ExecStart=/usr/bin/python3 -u %h/vg101/dev/autokdewallet/unlock.py
+
+# This machine's secret daemon (kwallet 6.30). kwalletd6 is not the PAM target.
+Environment=KWALLETD_BIN=/usr/bin/ksecretd
+# Set this to hand the environment over immediately instead of waiting
+# for Plasma to publish the graphical session variables:
+# Environment=AUTOKDEWALLET_NO_WAIT=1
+
 Restart=on-failure
 RestartSec=2
+StartLimitBurst=3
+TimeoutStopSec=5
 
 [Install]
-# start after graphical session
 WantedBy=graphical-session-pre.target

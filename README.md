@@ -7,17 +7,16 @@ It eliminates the need to manually enter your wallet password every time you log
 ## How It Works
 
 1.  **Secure Storage**: Your KWallet password is encrypted using `systemd-creds` and stored in a `password.cred` file. This file can only be decrypted by your specific user on your specific hardware (bound to the TPM).
-2.  **Automatic Unlock**: A systemd user service triggers the unlock script (`unlock.py`) when your graphical session starts.
-3.  **Hash Derivation**: The script reads the encrypted password, retrieves your wallet's salt, and calculates the specific PBKDF2-SHA512 hash required by KWallet.
-4.  **D-Bus Communication**: The calculated hash is sent directly to `kwalletd6` via the D-Bus `pamOpen` method, transparently unlocking the wallet.
+2.  **Automatic Unlock**: A systemd user service starts `unlock.py` before Plasma (`graphical-session-pre.target`).
+3.  **Hash Derivation**: The script reads the encrypted password, retrieves your wallet's salt, and calculates the PBKDF2-SHA512 hash KWallet expects (50,000 iterations, 56 bytes).
+4.  **ksecretd handshake**: Since KDE Frameworks 6.29, `kwalletd` no longer exposes D-Bus `pamOpen`. The script starts `/usr/bin/ksecretd --pam-login`, writes the hash down the pipe, then sends the session environment over `kwallet5.socket`, which is what `pam_kwallet` does.
 
 ## Prerequisites
 
 - **Linux with systemd** (v248 or newer recommended for `systemd-creds`).
-- **KDE Plasma 6** (Targeting `kwalletd6`).
+- **KDE Plasma 6** with `ksecretd` (this machine: kwallet 6.30, Plasma 6.7).
 - **TPM 2.0** enabled in your BIOS/UEFI.
-- **Python 3**.
-- **Python Libraries**: `dbus-python`.
+- **Python 3** (stdlib only; `dbus-python` is not required).
 - **Just** (Command runner, optional but recommended).
 
 ## Installation
@@ -55,7 +54,7 @@ echo -n "YOUR_KWALLET_PASSWORD" | systemd-creds encrypt --user - password.cred
 > **Note**: This creates a `password.cred` file, which is encrypted and bound to your TPM and user. It cannot be used on another machine.
 
 ### 3. Install the Service
-This installs the systemd service to `~/.config/systemd/user/` and enables it.
+The unit in this checkout is written for `/home/virtualguard/vg101/dev/autokdewallet`. It is installed to `~/.config/systemd/user/` and enabled for the next login. It is not started immediately, because starting it mid-session replaces the `ksecretd` Plasma already launched.
 
 Using `just`:
 ```bash
@@ -67,12 +66,18 @@ Or manually:
 mkdir -p ~/.config/systemd/user/
 cp kwallet_auto_unlock.service ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now kwallet_auto_unlock.service
+systemctl --user reenable kwallet_auto_unlock.service
 ```
 
 ## Usage
 
-Make sure kwallet's pam moudle is disabled, otherwise pam will conflit with this project. Once installed, the service will run automatically every time you log in. You should no longer be prompted for your KWallet password.
+This machine uses SDDM autologin, so `pam_kwallet5.so` never receives a password and does not start `ksecretd`. The service is the unlock path. If you later switch to a password login, comment out the `pam_kwallet5.so` lines in `/etc/pam.d/sddm`, or PAM and this service will both try to own `kwallet5.socket`.
+
+Once `password.cred` exists and the unit is enabled, the service runs at the next login. To unlock the wallet in the current session after creating the credential:
+
+```bash
+systemctl --user start kwallet_auto_unlock.service
+```
 
 ### Manual Testing
 You can run the unlock script manually to verify it works:

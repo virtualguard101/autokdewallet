@@ -4,18 +4,18 @@ A Python utility for automatically unlocking KDE Wallet (KWallet) using TPM-back
 
 ## Project Overview
 
-The `autokdewallet` project aims to provide a seamless login experience for KDE users by automatically unlocking the default wallet (`kdewallet`) using a password securely stored in the system's TPM. It bypasses the manual password prompt by deriving the required PBKDF2-SHA512 hash and sending it directly to `kwalletd6` via D-Bus.
+The `autokdewallet` project aims to provide a seamless login experience for KDE users by automatically unlocking the default wallet (`kdewallet`) using a password securely stored in the system's TPM. It derives the PBKDF2-SHA512 hash and feeds it to `ksecretd --pam-login`, because D-Bus `pamOpen` was removed in KDE Frameworks 6.29.
 
 ### Key Technologies
 
-- **Python 3**: Core logic for hash derivation and D-Bus communication.
-- **D-Bus**: Specifically the `org.kde.KWallet.pamOpen` method on `org.kde.kwalletd6`.
+- **Python 3**: Core logic for hash derivation and the `ksecretd` PAM handshake. No third-party libraries.
+- **ksecretd**: Started as `ksecretd --pam-login <pipe-fd> <socket-fd>` with `PAM_KWALLET5_LOGIN` set. The 56-byte hash goes down the pipe; the session environment goes over `$XDG_RUNTIME_DIR/kwallet5.socket`.
 - **systemd-creds**: Used to encrypt and decrypt the wallet password using the TPM.
-- **Systemd User Services**: For automating the unlock process during the graphical session startup.
+- **Systemd User Services**: The unit is `Type=simple`, wanted by `graphical-session-pre.target`, and stays alive as `ksecretd`'s parent.
 
 ### Architecture
 
-- **`unlock.py`**: The main entry point. It retrieves the password, loads the salt, derives the hash, and calls the KWallet D-Bus interface.
+- **`unlock.py`**: The main entry point. It retrieves the password, loads the salt, derives the hash, starts `ksecretd`, and completes the PAM handshake. On this machine the checkout is `~/vg101/dev/autokdewallet` and the daemon is `/usr/bin/ksecretd` (kwallet 6.30). SDDM autologin means pam_kwallet does not launch the daemon.
 - **`calculate_hash.py`**: Contains the logic to retrieve the password from `systemd-creds` and implement the PBKDF2-SHA512 hashing algorithm (50,000 iterations, 56-byte output) to match KWallet's internal requirements.
 - **`get_salt.py`**: Utility to read the binary salt from `~/.local/share/kwalletd/kdewallet.salt`.
 - **`justfile`**: A `just` task runner configuration for common operations like installation and credential generation.
@@ -56,7 +56,7 @@ just clean
 
 ## Development Conventions
 
-- **Dependencies**: Requires `python3` and `dbus-python` (or `dbus-next`).
+- **Dependencies**: Requires `python3`. `dbus-python` is not used.
 - **Security**: The `password.cred` file is encrypted for the current user/hardware. Avoid sharing this file.
-- **KWallet Version**: Targeted at KDE Plasma 6 (`kwalletd6`). For Plasma 5, the D-Bus service and interface names may need adjustment.
-- **Hash Parameters**: Iterations and key size are strictly defined to match KWallet's `kwalletbackend.cpp` source code.
+- **KWallet Version**: Plasma 6 / kwallet >= 6.29 (`ksecretd`). This machine is kwallet 6.30.0 and Plasma 6.7.5.
+- **Hash Parameters**: Iterations and key size are strictly defined to match KWallet's `kwalletbackend.h` (`PBKDF2_SHA512_ITERATIONS` 50000, `PBKDF2_SHA512_KEYSIZE` 56).
