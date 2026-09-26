@@ -14,9 +14,9 @@ Before=plasma-workspace.target
 # so that this unit represents the daemon's lifetime. Type=simple is also
 # what lets Plasma publish WAYLAND_DISPLAY while the handshake is still waiting.
 Type=simple
-# This checkout lives here. The previous unit pointed at vg101/tools, which is gone.
-WorkingDirectory=%h/vg101/dev/autokdewallet
-ExecStart=/usr/bin/python3 -u %h/vg101/dev/autokdewallet/unlock.py
+# Runtime lives in the home directory, not in the git checkout.
+WorkingDirectory=%h/.autokdewallet
+ExecStart=/usr/bin/python3 -u %h/.autokdewallet/unlock.py
 
 # This machine's secret daemon (kwallet 6.30). kwalletd6 is not the PAM target.
 Environment=KWALLETD_BIN=/usr/bin/ksecretd

@@ -6,7 +6,7 @@ It eliminates the need to manually enter your wallet password every time you log
 
 ## How It Works
 
-1.  **Secure Storage**: Your KWallet password is encrypted using `systemd-creds` and stored in a `password.cred` file. This file can only be decrypted by your specific user on your specific hardware (bound to the TPM).
+1.  **Secure Storage**: Your KWallet password is encrypted using `systemd-creds` and stored as `~/.autokdewallet/password.cred`. That directory is mode `0700`. The file can only be decrypted by your user on this hardware (bound to the TPM).
 2.  **Automatic Unlock**: A systemd user service starts `unlock.py` before Plasma (`graphical-session-pre.target`).
 3.  **Hash Derivation**: The script reads the encrypted password, retrieves your wallet's salt, and calculates the PBKDF2-SHA512 hash KWallet expects (50,000 iterations, 56 bytes).
 4.  **ksecretd handshake**: Since KDE Frameworks 6.29, `kwalletd` no longer exposes D-Bus `pamOpen`. The script starts `/usr/bin/ksecretd --pam-login`, writes the hash down the pipe, then sends the session environment over `kwallet5.socket`, which is what `pam_kwallet` does.
@@ -28,46 +28,41 @@ cd autokdewallet
 ```
 use `just -l` to see all available commands.
 ```bash
-> just -l
-Available recipes:
-    all
-    clean
-    enable                        # enable systemd service(user scope)
-    generate_password password="" # use systemd-creds to generate password.cred
-    install                       # install systemd service(user scope)
-    run
-    setup                         # install and enable service
+just -l
 ```
-### 2. Generate Encrypted Credentials
-You need to encrypt your KWallet password use `systemd-creds`. Replace `YOUR_KWALLET_PASSWORD` with your real wallet password.
 
-Using `just`:
+### 2. Install the Runtime
+`just install` copies `unlock.py`, `calculate_hash.py`, and `get_salt.py` into `~/.autokdewallet`, and installs the user unit. The service always runs from that directory, so the clone can live anywhere. If `password.cred` is still in the clone, install moves it into `~/.autokdewallet` and does not overwrite a credential already there.
+
+```bash
+just install
+```
+
+### 3. Generate Encrypted Credentials
+Replace `YOUR_KWALLET_PASSWORD` with your real wallet password. The credential is written to `~/.autokdewallet/password.cred`, not into the clone.
+
 ```bash
 just generate_password "YOUR_KWALLET_PASSWORD"
 ```
 
 Or manually:
 ```bash
-echo -n "YOUR_KWALLET_PASSWORD" | systemd-creds encrypt --user - password.cred
+mkdir -p ~/.autokdewallet
+chmod 700 ~/.autokdewallet
+echo -n "YOUR_KWALLET_PASSWORD" | systemd-creds encrypt --user - ~/.autokdewallet/password.cred
+chmod 600 ~/.autokdewallet/password.cred
 ```
 
-> **Note**: This creates a `password.cred` file, which is encrypted and bound to your TPM and user. It cannot be used on another machine.
+> **Note**: `password.cred` is encrypted and bound to your TPM and user. It cannot be used on another machine.
 
-### 3. Install the Service
-The unit in this checkout is written for `/home/virtualguard/vg101/dev/autokdewallet`. It is installed to `~/.config/systemd/user/` and enabled for the next login. It is not started immediately, because starting it mid-session replaces the `ksecretd` Plasma already launched.
+### 4. Enable the Service
+This enables the unit for the next login. It does not start it immediately, because starting it mid-session replaces the `ksecretd` Plasma already launched.
 
-Using `just`:
 ```bash
-just setup
+just enable
 ```
 
-Or manually:
-```bash
-mkdir -p ~/.config/systemd/user/
-cp kwallet_auto_unlock.service ~/.config/systemd/user/
-systemctl --user daemon-reload
-systemctl --user reenable kwallet_auto_unlock.service
-```
+`just setup` runs install and enable together.
 
 ## Usage
 
@@ -85,7 +80,7 @@ You can run the unlock script manually to verify it works:
 ```bash
 just run
 # or
-python3 unlock.py
+python3 ~/.autokdewallet/unlock.py
 ```
 
 ### Cleaning Up
@@ -109,7 +104,7 @@ If your wallet does not unlock automatically:
 3.  **Verify TPM/Credentials**:
     Try decrypting the credential manually to ensure `systemd-creds` is working and the password is correct:
     ```bash
-    systemd-creds decrypt --user password.cred -
+    systemd-creds decrypt --user ~/.autokdewallet/password.cred -
     ```
 
 ## Files Structure

@@ -15,7 +15,7 @@ The `autokdewallet` project aims to provide a seamless login experience for KDE 
 
 ### Architecture
 
-- **`unlock.py`**: The main entry point. It retrieves the password, loads the salt, derives the hash, starts `ksecretd`, and completes the PAM handshake. On this machine the checkout is `~/vg101/dev/autokdewallet` and the daemon is `/usr/bin/ksecretd` (kwallet 6.30). SDDM autologin means pam_kwallet does not launch the daemon.
+- **`unlock.py`**: The main entry point. It retrieves the password, loads the salt, derives the hash, starts `ksecretd`, and completes the PAM handshake. `just install` copies the runtime scripts to `~/.autokdewallet`; the user unit runs that copy, not the git checkout. On this machine the daemon is `/usr/bin/ksecretd` (kwallet 6.30). SDDM autologin means pam_kwallet does not launch the daemon.
 - **`calculate_hash.py`**: Contains the logic to retrieve the password from `systemd-creds` and implement the PBKDF2-SHA512 hashing algorithm (50,000 iterations, 56-byte output) to match KWallet's internal requirements.
 - **`get_salt.py`**: Utility to read the binary salt from `~/.local/share/kwalletd/kdewallet.salt`.
 - **`justfile`**: A `just` task runner configuration for common operations like installation and credential generation.
@@ -32,7 +32,7 @@ The project uses `just` as a command runner.
     ```bash
     just generate_password password="your_actual_wallet_password"
     ```
-    This creates a `password.cred` file in the project directory.
+    This creates `~/.autokdewallet/password.cred`.
 
 2.  **Install Service**:
     Copy the systemd service to the user configuration and enable it:
